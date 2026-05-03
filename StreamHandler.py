@@ -58,6 +58,12 @@ class StreamHandler:
         except Exception as e:
             print(f"StreamHandler Error: {e}")
         print(f"[Camera stopped running]")
+
+        # Falls noch eine Aufnahme läuft, diese sauber beenden
+        if self.is_recording:
+            self.stop_recording()
+        self.is_running = False
+
         if(self.on_thread_stop_cb):
             self.on_thread_stop_cb()
 
@@ -66,9 +72,15 @@ class StreamHandler:
         self.frame_gen.set_output_callback(on_frame_cb)
 
     def stop(self):
+        # Falls noch eine Aufnahme läuft, diese sauber beenden
+        if self.is_recording:
+            self.stop_recording()
+
         self.is_running = False
+            
         if self.thread.is_alive():
             self.thread.join(timeout=1.0)
+        self.slicer = None # Gibt die Kamera-Ressource/Datei frei
 
     def set_palette(self, palette):
         self.color_palette = palette

@@ -69,7 +69,7 @@ class VisualRecorderApp:
         self.root.bind("<space>", lambda event: self.toggle_recording() if self.is_live else None)
         
         # Ein kleinerer Puffer (z.B. 1 Sekunde) verringert die Verzögerung und den Speicherverbrauch.
-        self.frame_queue = queue.Queue(maxsize=self.frame_rate) 
+        self.frame_queue = queue.Queue(maxsize=2) 
         self.file_counter = 1
         self.is_recording = False
         self.is_running = True
@@ -215,7 +215,7 @@ class VisualRecorderApp:
     def _poll_frame_queue(self):
         """Läuft im Main-Thread via root.after – zieht Frames aus der Queue."""
         try:
-            print(f"Items in Queue: {self.frame_queue.qsize()}")
+            # print(f"Items in Queue: {self.frame_queue.qsize()}")
             img = self.frame_queue.get_nowait()
             # PhotoImage muss im Main-Thread bleiben
             self.photo = ImageTk.PhotoImage(image=img)
@@ -266,13 +266,15 @@ class VisualRecorderApp:
     
     def on_closing(self):
         """Stoppt die Hardware-Ressourcen sauber."""
-        if hasattr(self, "thread") and self.thread is not None:
-            self.thread.join(timeout=3.0)
-        if hasattr(self, "slicer") and self.slicer is not None:
-            self.slicer.camera.stop()
+        if self.live_stream_handler:
+            self.live_stream_handler.stop()
+        if self.file_stream_handler:
+            self.file_stream_handler.stop()
         self.root.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = VisualRecorderApp(root)
+    # Protokoll hinzufügen, damit on_closing aufgerufen wird, wenn das 'X' geklickt wird
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
