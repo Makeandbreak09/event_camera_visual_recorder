@@ -9,8 +9,8 @@ class StreamHandler:
         self.color_palette = color_palette
         self.on_frame_cb = on_frame_cb # Callback für das U
         self.on_thread_stop_cb = on_thrad_stop_cb
-        self.is_running = True
         self.is_recording = False
+        self.active = True
         
         # Kamera oder Datei laden
         try:
@@ -27,25 +27,32 @@ class StreamHandler:
 
         # Slicer & Generator
         # Slicer auf die exakte Frame-Dauer in Mikrosekunden einstellen
-        self.slicer = CameraStreamSlicer(self.camera.move(), SliceCondition.make_n_us((int)(10000000/self.fps)))
+        self.slicer = CameraStreamSlicer(self.camera.move(), SliceCondition.make_n_us((int)(1000000/10/self.fps)))
         self.frame_gen = PeriodicFrameGenerationAlgorithm(
             sensor_width=self.width, sensor_height=self.height, 
             fps=self.fps, palette=self.color_palette
         )
         
-        # Falls die Bilder direkt verarbeitet werden sollen:
-        if self.on_frame_cb:
-            self.frame_gen.set_output_callback(self.on_frame_cb)
+        # Internen Wrapper-Callback registrieren
+        self.frame_gen.set_output_callback(self._internal_on_frame_cb)
 
-        # Thread starten
+        self.start_thread()
+
+    def start_thread(self):
         self.thread = threading.Thread(target=self._worker, daemon=True)
         self.thread.start()
 
+
     def _worker(self):
+        self.active = True
         try:
             for slice in self.slicer:
-                if not self.is_running:
+                # print(f"Camera: {self.slicer.camera()}, Slice.Timestamp: {slice.t}, Slice.Event_NR: {slice.n_events}")
+
+                # Falls die Kamera nicht aktiv ist, überspringen wir die teure Verarbeitung
+                if not self.active:
                     break
+
                 events = slice.events
                 self.frame_gen.process_events(events)
                 
@@ -62,21 +69,25 @@ class StreamHandler:
         # Falls noch eine Aufnahme läuft, diese sauber beenden
         if self.is_recording:
             self.stop_recording()
-        self.is_running = False
+        self.active = False
 
         if(self.on_thread_stop_cb):
             self.on_thread_stop_cb()
 
+    def _internal_on_frame_cb(self, ts, frame):
+        """Sicherer Wrapper, der prüft, ob ein Callback existiert."""
+        if self.on_frame_cb is not None:
+            self.on_frame_cb(ts, frame)
+
     def set_on_frame_cb(self, on_frame_cb):
         self.on_frame_cb = on_frame_cb
-        self.frame_gen.set_output_callback(on_frame_cb)
 
     def stop(self):
         # Falls noch eine Aufnahme läuft, diese sauber beenden
         if self.is_recording:
             self.stop_recording()
 
-        self.is_running = False
+        self.active = False
             
         if self.thread.is_alive():
             self.thread.join(timeout=1.0)

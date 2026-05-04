@@ -17,7 +17,7 @@ class VisualRecorderApp:
         self.root = root
         root.title("Metavision Kamera & Recorder")
         # Ziel-Anzeige-FPS, passend zur Standard-Generierungs-FPS des StreamHandlers (standardmäßig 60)
-        self.frame_rate = 30 
+        self.frame_rate = 60 
 
         self.init_menu_bar()
 
@@ -72,7 +72,6 @@ class VisualRecorderApp:
         self.frame_queue = queue.Queue(maxsize=2) 
         self.file_counter = 1
         self.is_recording = False
-        self.is_running = True
         self.is_live = False
         self.save_path = "."
         
@@ -97,6 +96,9 @@ class VisualRecorderApp:
             widget.destroy()
 
     def init_live_camera(self):
+        if self.live_stream_handler is not None:
+            return
+
         try:
             self.live_stream_handler = StreamHandler(fps=self.frame_rate, color_palette=self.color_palette)
         except Exception as e:
@@ -114,11 +116,16 @@ class VisualRecorderApp:
     
         if self.file_stream_handler is not None:
             self.file_stream_handler.set_on_frame_cb(None)
+            self.file_stream_handler.active = False
+            self.file_stream_handler.stop()
+            self.file_stream_handler = None
+
+        if self.live_stream_handler is not None:
+            self.live_stream_handler.active = True
 
         self.clear_view()
 
         self.live_stream_handler.set_on_frame_cb(self.update_canvas)
-
 
         # Frame
         self.is_live = True
@@ -161,7 +168,8 @@ class VisualRecorderApp:
         else:
             if self.file_stream_handler is not None:
                 self.file_stream_handler.set_on_frame_cb(None)
-                self.clear_view()
+                self.file_stream_handler.active = False
+
             self.file_stream_handler = StreamHandler(source_path=selected_file, fps=self.frame_rate, color_palette=self.color_palette)
 
         if self.file_stream_handler is None:
@@ -169,8 +177,11 @@ class VisualRecorderApp:
         
         if self.live_stream_handler is not None:
             self.live_stream_handler.set_on_frame_cb(None)
+            self.live_stream_handler.active = False
             if self.live_stream_handler.is_recording:
                 self.live_stream_handler.stop_recording()
+            self.live_stream_handler.stop()
+            self.live_stream_handler = None
         
         self.clear_view()
 
@@ -193,7 +204,7 @@ class VisualRecorderApp:
         self.canvas.pack()
 
     def on_slicer_done(self):
-        self.is_running = False
+        self.active = False
         print("Wiedergabe beendet!")
         # Hier kannst du deine GUI-Elemente zurücksetzen
         self.init_online_view()
@@ -206,11 +217,14 @@ class VisualRecorderApp:
             self.file_stream_handler.set_palette(color_palette)
 
     def update_canvas(self, ts, frame):
-        # Konvertierung zum PIL Image im Hintergrund-Thread erledigen
-        img = Image.fromarray(frame.copy())
-        # .put() blockiert den StreamHandler-Thread, wenn die Queue voll ist.
-        # Dadurch wird die Einlesegeschwindigkeit der Datei an die Anzeige-Rate gekoppelt.
-        self.frame_queue.put(img)
+        try:
+            # Konvertierung zum PIL Image im Hintergrund-Thread erledigen
+            img = Image.fromarray(frame.copy())
+            # .put() blockiert den StreamHandler-Thread, wenn die Queue voll ist.
+            # Dadurch wird die Einlesegeschwindigkeit der Datei an die Anzeige-Rate gekoppelt.
+            self.frame_queue.put(img)
+        except queue.Full:
+            pass
 
     def _poll_frame_queue(self):
         """Läuft im Main-Thread via root.after – zieht Frames aus der Queue."""
@@ -226,16 +240,11 @@ class VisualRecorderApp:
             else:
                 self.canvas.itemconfig(self.canvas_image_id, image=self.photo)
         except queue.Empty:
+            # print("Queue ist leer")
             pass
-
-        last_delay = (time.time() - self.time)*1000
-        # print(f"Targeted Delay: {1000/self.frame_rate} ms")
-        # print(f"Real Delay: {last_delay} ms")
-        self.time = time.time()
-
-        # self.root.after((int)(1000/self.frame_rate-0.9*(last_delay-1000/self.frame_rate)), self._poll_frame_queue) # Aufruf alle (1000/FPS) ms
-        self.root.after((int)(1000/self.frame_rate), self._poll_frame_queue) # Aufruf alle (1000/FPS) ms
         
+        self.root.after((int)(1000/10/self.frame_rate), self._poll_frame_queue)
+
     def select_directory(self):
         """Öffnet einen Dialog zur Ordnerwahl."""
         selected_dir = filedialog.askdirectory(initialdir=self.save_path, title="Speicherort wählen")
