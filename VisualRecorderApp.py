@@ -17,7 +17,7 @@ class VisualRecorderApp:
         self.root = root
         root.title("Metavision Kamera & Recorder")
         # Ziel-Anzeige-FPS, passend zur Standard-Generierungs-FPS des StreamHandlers (standardmäßig 60)
-        self.frame_rate = 60 
+        self.frame_rate = 30 
 
         self.init_menu_bar()
 
