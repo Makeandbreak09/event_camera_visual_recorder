@@ -27,7 +27,7 @@ class StreamHandler:
 
         # Slicer & Generator
         # Slicer auf die exakte Frame-Dauer in Mikrosekunden einstellen
-        self.slicer = CameraStreamSlicer(self.camera.move(), SliceCondition.make_n_us((int)(1000000/10/self.fps)))
+        self.slicer = CameraStreamSlicer(self.camera.move(), SliceCondition.make_n_us((int)(1000000/self.fps)))
         self.frame_gen = PeriodicFrameGenerationAlgorithm(
             sensor_width=self.width, sensor_height=self.height, 
             fps=self.fps, palette=self.color_palette
