@@ -6,9 +6,10 @@ import threading
 import os
 import queue
 import time
+import cv2
 from StreamHandler import StreamHandler
-from metavision_sdk_core import PeriodicFrameGenerationAlgorithm, ColorPalette
-from metavision_sdk_stream import Camera, CameraStreamSlicer, SliceCondition, RAWEvt2EventFileWriter
+from Balltracker import BallTracker
+from metavision_sdk_core import ColorPalette
 
 
 class VisualRecorderApp:
@@ -17,7 +18,7 @@ class VisualRecorderApp:
         self.root = root
         root.title("Metavision Kamera & Recorder")
         # Ziel-Anzeige-FPS, passend zur Standard-Generierungs-FPS des StreamHandlers (standardmäßig 60)
-        self.frame_rate = 60 
+        self.frame_rate = 20 
 
         self.init_menu_bar()
 
@@ -26,8 +27,14 @@ class VisualRecorderApp:
         self.live_stream_handler = None
         self.file_stream_handler = None
 
+        # Create a BallTracker object
+        self.ball_tracker = BallTracker(model_path='yolo26n.pt')
+
+        self.last_frame_time = time.time()
+        self.last_ts = 0
         self.init_online_view()
         self.canvas_image_id = None
+
         
 
     def init_menu_bar(self):
@@ -91,6 +98,7 @@ class VisualRecorderApp:
         with self.frame_queue.mutex:
             self.frame_queue.queue.clear()
         self.canvas_image_id = None
+        self.last_ts = 0
 
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -125,7 +133,7 @@ class VisualRecorderApp:
 
         self.clear_view()
 
-        self.live_stream_handler.set_on_frame_cb(self.update_canvas)
+        self.live_stream_handler.set_on_frame_cb(self.put_frame_in_queue)
 
         # Frame
         self.is_live = True
@@ -185,7 +193,7 @@ class VisualRecorderApp:
         
         self.clear_view()
 
-        self.file_stream_handler.set_on_frame_cb(self.update_canvas)
+        self.file_stream_handler.set_on_frame_cb(self.put_frame_in_queue)
 
 
         # Frame Generator (wandelt Events in Bilder um)
@@ -216,13 +224,11 @@ class VisualRecorderApp:
         if self.file_stream_handler:
             self.file_stream_handler.set_palette(color_palette)
 
-    def update_canvas(self, ts, frame):
+    def put_frame_in_queue(self, ts, frame):
         try:
-            # Konvertierung zum PIL Image im Hintergrund-Thread erledigen
-            # img = Image.fromarray(frame.copy())
             # .put() blockiert den StreamHandler-Thread, wenn die Queue voll ist.
             # Dadurch wird die Einlesegeschwindigkeit der Datei an die Anzeige-Rate gekoppelt.
-            self.frame_queue.put(frame)
+            self.frame_queue.put((ts,frame))
         except queue.Full:
             pass
 
@@ -230,12 +236,42 @@ class VisualRecorderApp:
         """Läuft im Main-Thread via root.after – zieht Frames aus der Queue."""
         try:
             # print(f"Items in Queue: {self.frame_queue.qsize()}")
-            frame = self.frame_queue.get_nowait()
+            ts, frame = self.frame_queue.get_nowait()
+            this_frame_time = time.time()
+
+            last_delay = time.time() - self.last_frame_time
+
+            # print(last_delay)
+            cv2.putText(
+                frame, 
+                f"FPS: {int(1/last_delay)}", 
+                (10, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+
+            cv2.putText(
+                frame, 
+                f"Speed: {int((ts-self.last_ts)/(1000000*last_delay)*100)}%", 
+                (10, 60), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+            
+            self.last_frame_time = this_frame_time
+            self.last_ts = ts
+            
+
+            if self.is_live:
+                # Detect and interpolate ball positions
+                ball_detection = self.ball_tracker.detect_frame(frame)
+
+                # Draw bounding boxes and frame numbers
+                frame = self.ball_tracker.draw_bbox(frame, ball_detection)
+
+
             # Konvertierung zum PIL Image im Hintergrund-Thread erledigen
             img = Image.fromarray(frame.copy())
+
             # PhotoImage muss im Main-Thread bleiben
             self.photo = ImageTk.PhotoImage(image=img)
-            
+
             # Performance-Boost: Falls das Bild-Objekt existiert, nur Inhalt tauschen
             if self.canvas_image_id is None:
                 self.canvas_image_id = self.canvas.create_image(0, 0, image=self.photo, anchor=tk.NW)

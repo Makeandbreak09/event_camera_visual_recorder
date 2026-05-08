@@ -4,7 +4,7 @@ import threading
 import os
 
 class StreamHandler:
-    def __init__(self, source_path=None, fps=60, color_palette=ColorPalette.Gray, on_frame_cb=None, on_thrad_stop_cb=None):
+    def __init__(self, fps, source_path=None, color_palette=ColorPalette.Gray, on_frame_cb=None, on_thrad_stop_cb=None):
         self.fps = fps
         self.color_palette = color_palette
         self.on_frame_cb = on_frame_cb # Callback für das U
@@ -54,6 +54,7 @@ class StreamHandler:
                     break
 
                 events = slice.events
+
                 self.frame_gen.process_events(events)
                 
                 # HIER werden die Daten physisch geschrieben
