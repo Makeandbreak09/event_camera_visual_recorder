@@ -7,8 +7,7 @@ import os
 import queue
 import time
 from StreamHandler import StreamHandler
-from metavision_sdk_core import PeriodicFrameGenerationAlgorithm, ColorPalette
-from metavision_sdk_stream import Camera, CameraStreamSlicer, SliceCondition, RAWEvt2EventFileWriter
+from metavision_sdk_core import ColorPalette
 
 
 class VisualRecorderApp:
