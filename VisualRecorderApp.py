@@ -16,7 +16,7 @@ class VisualRecorderApp:
         self.root = root
         root.title("Metavision Kamera & Recorder")
         # Ziel-Anzeige-FPS, passend zur Standard-Generierungs-FPS des StreamHandlers (standardmäßig 60)
-        self.frame_rate = 30 
+        self.frame_rate = 60 
 
         self.init_menu_bar()
 
@@ -218,10 +218,10 @@ class VisualRecorderApp:
     def update_canvas(self, ts, frame):
         try:
             # Konvertierung zum PIL Image im Hintergrund-Thread erledigen
-            img = Image.fromarray(frame.copy())
+            # img = Image.fromarray(frame.copy())
             # .put() blockiert den StreamHandler-Thread, wenn die Queue voll ist.
             # Dadurch wird die Einlesegeschwindigkeit der Datei an die Anzeige-Rate gekoppelt.
-            self.frame_queue.put(img)
+            self.frame_queue.put(frame)
         except queue.Full:
             pass
 
@@ -229,7 +229,9 @@ class VisualRecorderApp:
         """Läuft im Main-Thread via root.after – zieht Frames aus der Queue."""
         try:
             # print(f"Items in Queue: {self.frame_queue.qsize()}")
-            img = self.frame_queue.get_nowait()
+            frame = self.frame_queue.get_nowait()
+            # Konvertierung zum PIL Image im Hintergrund-Thread erledigen
+            img = Image.fromarray(frame.copy())
             # PhotoImage muss im Main-Thread bleiben
             self.photo = ImageTk.PhotoImage(image=img)
             
